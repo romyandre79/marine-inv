@@ -1,0 +1,33 @@
+{
+  "name": "inventory-portal-frontend",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev --port 3013",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^0.11.3",
+    "@tailwindcss/vite": "^4.3.0",
+    "nuxt": "^4.4.8",
+    "pinia": "^3.0.4",
+    "tailwindcss": "^4.3.0",
+    "vue": "^3.5.35",
+    "vue-router": "^5.1.0"
+  },
+  "overrides": {
+    "esbuild": "0.28.1",
+    "vite": {
+      "esbuild": "0.28.1"
+    },
+    "nitropack": {
+      "esbuild": "0.28.1"
+    }
+  },
+  "devDependencies": {
+    "@nuxt/icon": "^2.2.3"
+  }
+}
