@@ -9,7 +9,9 @@ const portalUrl = config.public.portalUrl || 'http://localhost:3003'
 const navItems = [
   { label: 'Back to Portal', path: portalUrl, icon: 'heroicons:arrow-left-on-rectangle' },
   { label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
-  { label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] }
+  { label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
+  { label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
+  { label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] }
 ]
 
 const userRole = computed(() => auth.user?.role || 'viewer')

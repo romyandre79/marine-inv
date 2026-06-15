@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"github.com/marines-dev/inventory-portal/internal/audit"
 	"github.com/marines-dev/inventory-portal/internal/database"
 	"github.com/marines-dev/inventory-portal/internal/middleware"
@@ -36,6 +37,9 @@ func hasPermission(c *gin.Context, permission string) bool {
 }
 
 func main() {
+	// Load environment variables from .env
+	_ = godotenv.Load()
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3014"
@@ -281,6 +285,215 @@ func main() {
 			authHeader := c.GetHeader("Authorization")
 			go audit.SendAuditLog(authHeader, "delete_master_item", "master_item", &idStr, fmt.Sprintf(`{"id": "%s"}`, idStr))
 			c.JSON(http.StatusOK, gin.H{"success": true, "message": "Master item deleted successfully"})
+		})
+
+		// Master Warehouses CRUD API
+		api.GET("/master-warehouses", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:read") && !hasPermission(c, "master_warehouses:read") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			companyID := c.Query("company_id")
+			query := database.DB
+			if companyID != "" {
+				parsed, err := uuid.Parse(companyID)
+				if err == nil {
+					query = query.Where("company_id = ?", parsed)
+				}
+			}
+			var list []database.MasterWarehouse
+			if err := query.Order("name asc").Find(&list).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master warehouses"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+		})
+
+		api.POST("/master-warehouses", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:create") && !hasPermission(c, "master_warehouses:create") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			var item database.MasterWarehouse
+			if err := c.ShouldBindJSON(&item); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+				return
+			}
+			item.ID = uuid.New()
+			if err := database.DB.Create(&item).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create master warehouse"})
+				return
+			}
+			authHeader := c.GetHeader("Authorization")
+			entityIDStr := item.ID.String()
+			detailsBytes, _ := json.Marshal(item)
+			go audit.SendAuditLog(authHeader, "create_master_warehouse", "master_warehouse", &entityIDStr, string(detailsBytes))
+			c.JSON(http.StatusCreated, gin.H{"success": true, "data": item})
+		})
+
+		api.PUT("/master-warehouses/:id", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:update") && !hasPermission(c, "master_warehouses:update") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			idStr := c.Param("id")
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID format"})
+				return
+			}
+			var existing database.MasterWarehouse
+			if err := database.DB.First(&existing, id).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Master warehouse not found"})
+				return
+			}
+			var input database.MasterWarehouse
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+				return
+			}
+			existing.Name = input.Name
+			existing.Code = input.Code
+			existing.Address = input.Address
+			existing.VesselID = input.VesselID
+			existing.CompanyID = input.CompanyID
+			if err := database.DB.Save(&existing).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update master warehouse"})
+				return
+			}
+			authHeader := c.GetHeader("Authorization")
+			entityIDStr := existing.ID.String()
+			detailsBytes, _ := json.Marshal(existing)
+			go audit.SendAuditLog(authHeader, "update_master_warehouse", "master_warehouse", &entityIDStr, string(detailsBytes))
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": existing})
+		})
+
+		api.DELETE("/master-warehouses/:id", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:delete") && !hasPermission(c, "master_warehouses:delete") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			idStr := c.Param("id")
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID format"})
+				return
+			}
+			if err := database.DB.Delete(&database.MasterWarehouse{}, id).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete master warehouse"})
+				return
+			}
+			authHeader := c.GetHeader("Authorization")
+			go audit.SendAuditLog(authHeader, "delete_master_warehouse", "master_warehouse", &idStr, fmt.Sprintf(`{"id": "%s"}`, idStr))
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": "Master warehouse deleted successfully"})
+		})
+
+		// Master Units CRUD API
+		api.GET("/master-units", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:read") && !hasPermission(c, "master_units:read") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			query := database.DB
+			var list []database.MasterUnit
+			if err := query.Order("name asc").Find(&list).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master units"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+		})
+
+		api.POST("/master-units", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:create") && !hasPermission(c, "master_units:create") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			var item database.MasterUnit
+			if err := c.ShouldBindJSON(&item); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+				return
+			}
+			item.ID = uuid.New()
+			if err := database.DB.Create(&item).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create master unit"})
+				return
+			}
+			authHeader := c.GetHeader("Authorization")
+			entityIDStr := item.ID.String()
+			detailsBytes, _ := json.Marshal(item)
+			go audit.SendAuditLog(authHeader, "create_master_unit", "master_unit", &entityIDStr, string(detailsBytes))
+			c.JSON(http.StatusCreated, gin.H{"success": true, "data": item})
+		})
+
+		api.PUT("/master-units/:id", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:update") && !hasPermission(c, "master_units:update") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			idStr := c.Param("id")
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID format"})
+				return
+			}
+			var existing database.MasterUnit
+			if err := database.DB.First(&existing, id).Error; err != nil {
+				c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "Master unit not found"})
+				return
+			}
+			var input database.MasterUnit
+			if err := c.ShouldBindJSON(&input); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
+				return
+			}
+			existing.Name = input.Name
+			existing.Code = input.Code
+			existing.CompanyID = input.CompanyID
+			if err := database.DB.Save(&existing).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update master unit"})
+				return
+			}
+			authHeader := c.GetHeader("Authorization")
+			entityIDStr := existing.ID.String()
+			detailsBytes, _ := json.Marshal(existing)
+			go audit.SendAuditLog(authHeader, "update_master_unit", "master_unit", &entityIDStr, string(detailsBytes))
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": existing})
+		})
+
+		api.DELETE("/master-units/:id", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:delete") && !hasPermission(c, "master_units:delete") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			idStr := c.Param("id")
+			id, err := uuid.Parse(idStr)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid ID format"})
+				return
+			}
+			if err := database.DB.Delete(&database.MasterUnit{}, id).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to delete master unit"})
+				return
+			}
+			authHeader := c.GetHeader("Authorization")
+			go audit.SendAuditLog(authHeader, "delete_master_unit", "master_unit", &idStr, fmt.Sprintf(`{"id": "%s"}`, idStr))
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": "Master unit deleted successfully"})
 		})
 	}
 

@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineNuxtConfig({
   compatibilityDate: '2026-06-12',
   devtools: { enabled: true },
+  devServer: {
+    port: parseInt(process.env.PORT || '3007')
+  },
   
   // Enabled Nuxt 4 directory structure
   future: {

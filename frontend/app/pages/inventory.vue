@@ -11,6 +11,8 @@ const inventory = ref<any[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
 const masterItems = ref<any[]>([])
+const masterWarehouses = ref<any[]>([])
+const masterUnits = ref<any[]>([])
 
 // Computed metrics
 const totalItems = computed(() => inventory.value.length)
@@ -26,6 +28,8 @@ onMounted(async () => {
     await tenantStore.fetchCompanies()
     fetchInventory()
     fetchMasterItems()
+    fetchMasterWarehouses()
+    fetchMasterUnits()
   }
 })
 
@@ -33,6 +37,8 @@ onMounted(async () => {
 watch(() => tenantStore.activeTenantId, () => {
   fetchInventory()
   fetchMasterItems()
+  fetchMasterWarehouses()
+  fetchMasterUnits()
 })
 
 // CRUD State
@@ -106,6 +112,37 @@ async function fetchMasterItems() {
   }
 }
 
+async function fetchMasterWarehouses() {
+  try {
+    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+    const res = await $fetch<any>(`${config.public.apiUrl}/master-warehouses${companyQuery}`, {
+      headers: {
+        Authorization: `Bearer ${authStore.token}`
+      }
+    })
+    if (res.success && Array.isArray(res.data)) {
+      masterWarehouses.value = res.data
+    }
+  } catch (error) {
+    console.error('Failed to load master warehouses:', error)
+  }
+}
+
+async function fetchMasterUnits() {
+  try {
+    const res = await $fetch<any>(`${config.public.apiUrl}/master-units`, {
+      headers: {
+        Authorization: `Bearer ${authStore.token}`
+      }
+    })
+    if (res.success && Array.isArray(res.data)) {
+      masterUnits.value = res.data
+    }
+  } catch (error) {
+    console.error('Failed to load master units:', error)
+  }
+}
+
 function openAddModal() {
   editingItem.value = null
   selectedMasterItemId.value = ''
@@ -142,7 +179,7 @@ function openEditModal(item: any) {
 
 async function saveItem() {
   if (!form.value.name) {
-    alert('Please select or write a item name.')
+    alert('Please select or write an item name.')
     return
   }
   try {
@@ -261,7 +298,12 @@ async function deleteItem(id: string) {
               <div class="text-xs text-slate-500 mt-0.5 font-medium">Min Stock Target: {{ i.minimum_stock }} {{ i.unit }}</div>
             </td>
             <td class="px-6 py-4 font-mono text-slate-300 text-xs">{{ i.part_number || '-' }}</td>
-            <td class="px-6 py-4 text-slate-400">{{ i.location || '-' }}</td>
+            <td class="px-6 py-4 text-slate-400">
+              <span class="flex items-center gap-1">
+                <Icon name="heroicons:building-office" class="w-4 h-4 text-slate-500" />
+                {{ i.location || '-' }}
+              </span>
+            </td>
             <td class="px-6 py-4">
               <div class="flex items-center space-x-2">
                 <span :class="{
@@ -348,13 +390,16 @@ async function deleteItem(id: string) {
               />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Unit</label>
-              <input
+              <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Unit (Satuan)</label>
+              <select
                 v-model="form.unit"
-                type="text"
-                placeholder="e.g. pcs, Liters"
                 class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none transition"
-              />
+              >
+                <option value="pcs">pcs</option>
+                <option v-for="u in masterUnits" :key="u.id" :value="u.code">
+                  {{ u.code }} ({{ u.name }})
+                </option>
+              </select>
             </div>
             <div>
               <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Min Stock Limit</label>
@@ -368,13 +413,21 @@ async function deleteItem(id: string) {
           </div>
 
           <div>
-            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Storage Location</label>
-            <input
+            <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 flex justify-between">
+              <span>Storage Location (Warehouse)</span>
+              <NuxtLink to="/master-warehouses" class="text-emerald-400 hover:underline text-[10px] normal-case" @click="showModal = false">
+                Manage Warehouses →
+              </NuxtLink>
+            </label>
+            <select
               v-model="form.location"
-              type="text"
-              placeholder="e.g. Warehouse A - Shelf 2"
               class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none transition"
-            />
+            >
+              <option value="">-- Select Warehouse --</option>
+              <option v-for="w in masterWarehouses" :key="w.id" :value="w.name">
+                {{ w.name }} ({{ w.code || 'No Code' }})
+              </option>
+            </select>
           </div>
         </div>
 

@@ -67,7 +67,7 @@ func main() {
 	}
 
 	log.Println("Running GORM AutoMigrate for Inventory schemas...")
-	err := db.AutoMigrate(&database.InventoryItem{}, &database.MasterItem{})
+	err := db.AutoMigrate(&database.InventoryItem{}, &database.MasterItem{}, &database.MasterWarehouse{}, &database.MasterUnit{})
 	if err != nil {
 		log.Fatalf("Migration failed: %v", err)
 	}

@@ -38,3 +38,32 @@ func (MasterItem) TableName() string {
 	return "master_items"
 }
 
+type MasterWarehouse struct {
+	ID        uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Name      string     `gorm:"not null;size:255" json:"name"`
+	Code      string     `gorm:"size:100" json:"code"`
+	Address   string     `gorm:"type:text" json:"address"`
+	VesselID  *uuid.UUID `gorm:"type:uuid" json:"vessel_id"`
+	CompanyID *uuid.UUID `gorm:"type:uuid" json:"company_id"`
+	CreatedAt time.Time  `gorm:"not null;default:now()" json:"created_at"`
+	UpdatedAt time.Time  `gorm:"not null;default:now()" json:"updated_at"`
+}
+
+func (MasterWarehouse) TableName() string {
+	return "master_warehouses"
+}
+
+type MasterUnit struct {
+	ID        uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	Name      string     `gorm:"not null;size:255" json:"name"`
+	Code      string     `gorm:"not null;size:100" json:"code"`
+	CompanyID *uuid.UUID `gorm:"type:uuid" json:"company_id"`
+	CreatedAt time.Time  `gorm:"not null;default:now()" json:"created_at"`
+	UpdatedAt time.Time  `gorm:"not null;default:now()" json:"updated_at"`
+}
+
+func (MasterUnit) TableName() string {
+	return "master_units"
+}
+
+
