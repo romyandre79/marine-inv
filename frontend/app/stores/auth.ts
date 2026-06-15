@@ -5,9 +5,13 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<any>(null)
   const config = useRuntimeConfig()
 
-  // Load token from cookies (which are shared across localhost ports)
-  const tokenCookie = useCookie<string | null>('mms_token', { path: '/' })
-  const userCookie = useCookie<any>('mms_user', { path: '/' })
+  // Load token from cookies (which are shared across localhost ports and subdomains)
+  const cookieOpts = {
+    path: '/',
+    domain: import.meta.client && window.location.hostname.endsWith('.marines.web.id') ? '.marines.web.id' : undefined
+  }
+  const tokenCookie = useCookie<string | null>('mms_token', cookieOpts)
+  const userCookie = useCookie<any>('mms_user', cookieOpts)
 
   const loadSession = () => {
     if (tokenCookie.value) {
