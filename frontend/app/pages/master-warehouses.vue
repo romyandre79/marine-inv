@@ -80,8 +80,8 @@ async function fetchWarehouses() {
 
 async function fetchVessels() {
   try {
-    // Fetch from FMS Backend (Port 3006 or configured proxy)
-    const res = await $fetch<any>('http://localhost:3006/api/v1/vessels', {
+    // Fetch from FMS Backend via configured runtime config
+    const res = await $fetch<any>(`${config.public.fmsApiUrl}/vessels`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
       }
