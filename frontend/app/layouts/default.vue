@@ -36,5 +36,9 @@ const { mobileOpen, closeMobile } = useSidebar()
         </div>
       </main>
     </div>
+
+    <!-- Floating Chat Widget -->
+    <LayoutChatPopup />
   </div>
 </template>
+
