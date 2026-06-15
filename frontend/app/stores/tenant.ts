@@ -9,6 +9,7 @@ export interface Company {
 
 export const useTenantStore = defineStore('tenant', () => {
   const authStore = useAuthStore()
+  const config = useRuntimeConfig()
   const companies = ref<Company[]>([])
   
   // Read tenant cookies (shared across localhost)
@@ -21,7 +22,7 @@ export const useTenantStore = defineStore('tenant', () => {
 
   const fetchCompanies = async () => {
     try {
-      const res = await $fetch<any>('http://localhost:3004/api/v1/companies', {
+      const res = await $fetch<any>(`${config.public.mmsApiUrl}/companies`, {
         headers: {
           Authorization: `Bearer ${authStore.token}`
         }

@@ -44,7 +44,8 @@ export default defineNuxtConfig({
     public: {
       apiUrl: process.env.NUXT_PUBLIC_API_URL || 'http://localhost:3013/api/v1',
       portalUrl: process.env.NUXT_PUBLIC_PORTAL_URL || 'http://localhost:3003',
-      fmsApiUrl: process.env.NUXT_PUBLIC_FMS_API_URL || 'http://localhost:3006/api/v1'
+      fmsApiUrl: process.env.NUXT_PUBLIC_FMS_API_URL || 'http://localhost:3006/api/v1',
+      mmsApiUrl: process.env.NUXT_PUBLIC_MMS_API_URL || 'http://localhost:3004/api/v1'
     }
   }
 })
