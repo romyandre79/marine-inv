@@ -2,6 +2,8 @@
 const tenant = useTenant()
 const auth = useAuth()
 const { toggleMobile, mobileOpen } = useSidebar()
+const { locale, locales, setLocale } = useI18n()
+const langMap: Record<string, string> = { id: 'ID', en: 'EN', zh: '中文' }
 
 const isDark = ref(true)
 
@@ -52,7 +54,7 @@ const toggleDarkMode = () => {
           <select
             :value="tenant.activeTenantId"
             @change="tenant.selectTenant(($event.target as HTMLSelectElement).value)"
-            class="h-10 pl-3 pr-8 text-sm font-semibold bg-slate-950 border border-slate-800 text-slate-300 rounded-lg outline-none cursor-pointer appearance-none"
+            class="h-10 pl-3 pr-8 text-sm font-semibold bg-slate-950 border border-slate-800 text-slate-300 rounded-lg outline-none cursor-pointer appearance-none animate-fade-in"
           >
             <option v-for="c in tenant.companies" :key="c.id" :value="c.id">
               {{ c.name }}
@@ -68,6 +70,21 @@ const toggleDarkMode = () => {
 
     <!-- Actions -->
     <div class="flex items-center gap-4">
+      <!-- Language switcher -->
+      <div class="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-lg p-1">
+        <button
+          v-for="loc in locales"
+          :key="loc.code"
+          @click="setLocale(loc.code as 'id' | 'en' | 'zh')"
+          class="px-2 py-1 text-xs font-semibold rounded-md transition-all duration-200"
+          :class="locale === loc.code
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'text-slate-400 hover:text-blue-500'"
+        >
+          {{ langMap[loc.code] }}
+        </button>
+      </div>
+
       <!-- Theme toggle -->
       <button
         @click="toggleDarkMode"
@@ -78,7 +95,7 @@ const toggleDarkMode = () => {
 
       <!-- User avatar -->
       <div class="flex items-center gap-3 pl-3 border-l border-slate-800">
-        <div class="w-9 h-9 rounded-full bg-emerald-600/10 text-emerald-400 flex items-center justify-center font-bold">
+        <div class="w-9 h-9 rounded-full bg-blue-600/10 text-blue-400 flex items-center justify-center font-bold">
           {{ auth.user?.name ? auth.user.name.charAt(0).toUpperCase() : 'U' }}
         </div>
         <div class="hidden md:block">

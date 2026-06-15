@@ -29,8 +29,24 @@ export default defineNuxtConfig({
 
   modules: [
     '@pinia/nuxt',
-    '@nuxt/icon'
+    '@nuxt/icon',
+    '@nuxtjs/i18n'
   ],
+
+  i18n: {
+    langDir: 'app/i18n/locales',
+    restructureDir: false,
+    defaultLocale: 'id',
+    locales: [
+      { code: 'id', name: 'Indonesia', file: 'id.json' },
+      { code: 'en', name: 'English', file: 'en.json' },
+      { code: 'zh', name: '中文', file: 'zh.json' }
+    ],
+    strategy: 'no_prefix',
+    bundle: {
+      optimizeTranslationDirective: false
+    }
+  },
 
   css: ['~/assets/css/main.css'],
 

@@ -4,14 +4,35 @@ const auth = useAuth()
 const { isCollapsed, toggle, mobileOpen, closeMobile } = useSidebar()
 const config = useRuntimeConfig()
 
-const portalUrl = config.public.portalUrl || 'http://localhost:3003'
+const getAppUrl = (appCode: string, devPort: string) => {
+  if (import.meta.client) {
+    const hostname = window.location.hostname
+    if (hostname.endsWith('.marines.web.id')) {
+      const parts = hostname.split('.')
+      const domain = parts.slice(parts.indexOf('marines')).join('.')
+      return `https://dev-${appCode}.${domain}`
+    }
+  }
+  return `http://localhost:${devPort}`
+}
+
+const portalUrl = computed(() => getAppUrl('mms', '3003'))
+const fmsUrl = computed(() => getAppUrl('fms', '3005'))
+const crewUrl = computed(() => getAppUrl('hrs', '3011'))
+const finUrl = computed(() => getAppUrl('fin', '3013'))
 
 const navItems = [
-  { label: 'Back to Portal', path: portalUrl, icon: 'heroicons:arrow-left-on-rectangle' },
-  { label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
-  { label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
-  { label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
-  { label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] }
+  { labelKey: 'nav.portal_dashboard', label: 'Portal Dashboard', path: portalUrl.value, icon: 'heroicons:home', external: true },
+  { labelKey: 'nav.inventory_stock', label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
+  { labelKey: 'nav.master_items', label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
+  { labelKey: 'nav.master_warehouses', label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
+  { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] }
+]
+
+const ecosystemItems = [
+  { label: 'Fleet Management', path: fmsUrl, icon: 'heroicons:ship-wheel' },
+  { label: 'Crew Management', path: crewUrl, icon: 'heroicons:users' },
+  { label: 'Financial Management', path: finUrl, icon: 'heroicons:banknotes' }
 ]
 
 const userRole = computed(() => auth.user?.role || 'viewer')
@@ -19,22 +40,10 @@ const userPermissions = computed(() => auth.user?.permissions || [])
 
 const filteredNavItems = computed(() => {
   return navItems.filter(item => {
-    if (!item.roles && !item.permissions) return true
-    
-    if (userRole.value === 'super_admin') return true
-    
-    const hasRole = item.roles ? item.roles.includes(userRole.value) : false
-    const hasPermission = item.permissions ? item.permissions.some(p => userPermissions.value.includes(p)) : false
-    
-    if (item.roles && !item.permissions) return hasRole
-    if (item.permissions && !item.roles) return hasPermission
-    return hasRole || hasPermission
+    if (!item.roles) return true
+    return item.roles.includes(userRole.value)
   })
 })
-
-const isExternal = (path?: string) => {
-  return path ? path.startsWith('http') : false
-}
 </script>
 
 <template>
@@ -49,7 +58,7 @@ const isExternal = (path?: string) => {
     <div class="h-[72px] flex items-center border-b border-slate-800 shrink-0 relative"
       :class="isCollapsed ? 'justify-center px-0' : 'gap-3 px-4'"
     >
-      <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shrink-0">
+      <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center font-bold text-white shrink-0 shadow-lg shadow-emerald-500/20">
         INV
       </div>
       <div v-if="!isCollapsed" class="flex-1 min-w-0 overflow-hidden">
@@ -72,41 +81,64 @@ const isExternal = (path?: string) => {
     </div>
 
     <!-- Navigation -->
-    <nav class="flex-1 py-6 flex flex-col gap-1 overflow-y-auto"
+    <div class="flex-1 py-6 flex flex-col gap-6 overflow-y-auto"
       :class="isCollapsed ? 'px-2 items-center' : 'px-4'"
     >
-      <template v-for="item in filteredNavItems" :key="item.path">
-        <!-- External Links (Back to Portal) -->
-        <a
-          v-if="isExternal(item.path)"
-          :href="item.path"
-          class="flex items-center rounded-lg text-sm font-medium transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-          :class="isCollapsed ? 'w-10 h-10 justify-center p-0' : 'gap-3 px-4 py-3 w-full'"
-          :title="isCollapsed ? item.label : ''"
-          @click="closeMobile"
-        >
-          <Icon :name="item.icon" class="w-5 h-5 shrink-0" />
-          <span v-if="!isCollapsed" class="truncate">{{ item.label }}</span>
-        </a>
-        <!-- Internal Route Links -->
-        <NuxtLink
-          v-else
-          :to="item.path"
-          class="flex items-center rounded-lg text-sm font-medium transition-all duration-200"
-          :class="[
-            isCollapsed ? 'w-10 h-10 justify-center p-0' : 'gap-3 px-4 py-3 w-full',
-            route.path === item.path
-              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-          ]"
-          :title="isCollapsed ? item.label : ''"
-          @click="closeMobile"
-        >
-          <Icon :name="item.icon" class="w-5 h-5 shrink-0" />
-          <span v-if="!isCollapsed" class="truncate">{{ item.label }}</span>
-        </NuxtLink>
-      </template>
-    </nav>
+      <nav class="flex flex-col gap-1 w-full">
+        <template v-for="item in filteredNavItems" :key="item.path">
+          <!-- External Links -->
+          <a
+            v-if="item.external"
+            :href="item.path"
+            class="flex items-center rounded-xl text-sm font-medium transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            :class="isCollapsed ? 'w-10 h-10 justify-center p-0' : 'gap-3 px-4 py-3 w-full'"
+            :title="isCollapsed ? $t(item.labelKey) : ''"
+            @click="closeMobile"
+          >
+            <Icon :name="item.icon" class="w-5 h-5 shrink-0" />
+            <span v-if="!isCollapsed" class="truncate">{{ $t(item.labelKey) }}</span>
+          </a>
+          <!-- Internal Route Links -->
+          <NuxtLink
+            v-else
+            :to="item.path"
+            class="flex items-center rounded-xl text-sm font-medium transition-all duration-200"
+            :class="[
+              isCollapsed ? 'w-10 h-10 justify-center p-0' : 'gap-3 px-4 py-3 w-full',
+              route.path === item.path
+                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
+                : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+            ]"
+            :title="isCollapsed ? $t(item.labelKey) : ''"
+            @click="closeMobile"
+          >
+            <Icon :name="item.icon" class="w-5 h-5 shrink-0" />
+            <span v-if="!isCollapsed" class="truncate">{{ $t(item.labelKey) }}</span>
+          </NuxtLink>
+        </template>
+      </nav>
+
+      <!-- Connected Ecosystem Section -->
+      <div class="w-full flex flex-col gap-2 border-t border-slate-800/80 pt-4">
+        <p v-if="!isCollapsed" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-4 mb-1">
+          {{ $t('nav.connected_apps') }}
+        </p>
+        <nav class="flex flex-col gap-1 w-full">
+          <a
+            v-for="item in ecosystemItems"
+            :key="item.label"
+            :href="item.path.value"
+            class="flex items-center rounded-xl text-sm font-medium transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+            :class="isCollapsed ? 'w-10 h-10 justify-center p-0' : 'gap-3 px-4 py-2.5 w-full'"
+            :title="isCollapsed ? item.label : ''"
+            @click="closeMobile"
+          >
+            <Icon :name="item.icon" class="w-5 h-5 shrink-0 text-slate-500" />
+            <span v-if="!isCollapsed" class="truncate text-xs font-semibold">{{ item.label }}</span>
+          </a>
+        </nav>
+      </div>
+    </div>
 
     <!-- Footer user summary -->
     <div
