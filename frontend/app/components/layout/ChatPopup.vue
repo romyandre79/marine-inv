@@ -40,6 +40,46 @@ const fetchUsers = async () => {
   }
 }
 
+// Fetch initial unread message counts
+const fetchUnreadCounts = async () => {
+  if (!authStore.token) return
+  try {
+    const res = await $fetch<any>(`${config.public.apiUrl}/chat/unread`, {
+      headers: {
+        Authorization: `Bearer ${authStore.token}`
+      }
+    })
+    if (res?.success && res.data) {
+      const counts: Record<string, number> = {}
+      res.data.forEach((item: any) => {
+        counts[item.sender_id] = item.count
+      })
+      unreadCounts.value = counts
+    }
+  } catch (e) {
+    console.error('Failed to fetch unread counts', e)
+  }
+}
+
+// Mark messages from a specific sender as read
+const markAsRead = async (senderId: string) => {
+  if (!authStore.token) return
+  try {
+    await $fetch<any>(`${config.public.apiUrl}/chat/read`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authStore.token}`
+      },
+      body: {
+        sender_id: senderId
+      }
+    })
+    unreadCounts.value[senderId] = 0
+  } catch (e) {
+    console.error('Failed to mark messages as read', e)
+  }
+}
+
 // Fetch chat history
 const fetchHistory = async () => {
   if (!authStore.token) return
@@ -111,6 +151,8 @@ const initWebSocket = () => {
         
         if (!isReadingNow) {
           unreadCounts.value[senderId] = (unreadCounts.value[senderId] || 0) + 1
+        } else {
+          markAsRead(senderId)
         }
         
         // Trigger browser notification and sound in any condition
@@ -219,7 +261,7 @@ const sendMessage = () => {
 // Select a user to direct chat
 const selectUserChat = (user: any) => {
   activeUserChat.value = user
-  unreadCounts.value[user.id] = 0
+  markAsRead(user.id)
   fetchHistory()
 }
 
@@ -243,12 +285,13 @@ watch(activeTab, (newTab) => {
 watch(isOpen, (newVal) => {
   if (newVal) {
     fetchUsers()
+    fetchUnreadCounts()
     fetchHistory()
     initWebSocket()
     scrollToBottom()
     // Reset unread count for the active direct user chat when opening window
     if (activeUserChat.value) {
-      unreadCounts.value[activeUserChat.value.id] = 0
+      markAsRead(activeUserChat.value.id)
     }
   }
 })
@@ -256,6 +299,7 @@ watch(isOpen, (newVal) => {
 watch(() => authStore.isAuthenticated, (newVal) => {
   if (newVal) {
     fetchUsers()
+    fetchUnreadCounts()
     initWebSocket()
   } else {
     if (socket.value) {
@@ -269,6 +313,7 @@ watch(() => authStore.isAuthenticated, (newVal) => {
 onMounted(() => {
   if (authStore.isAuthenticated) {
     fetchUsers()
+    fetchUnreadCounts()
     initWebSocket()
   }
 })
