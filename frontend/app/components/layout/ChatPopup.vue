@@ -18,16 +18,16 @@ const unreadCounts = ref<Record<string, number>>({})
 
 // WebSocket Connection URL
 const wsUrl = computed(() => {
-  const base = config.public.mmsApiUrl
-  const wsProto = base.startsWith('https') ? 'wss' : 'ws'
-  return `${base.replace(/^http[s]?/, wsProto)}/chat/ws?token=${authStore.token}`
+  const base = config.public.apiUrl
+  const wsProto = base && base.startsWith('https') ? 'wss' : 'ws'
+  return `${(base || '').replace(/^http[s]?/, wsProto)}/chat/ws?token=${authStore.token}`
 })
 
 // Fetch all registered users to map names/emails
 const fetchUsers = async () => {
   if (!authStore.token) return
   try {
-    const res = await $fetch<any>(`${config.public.mmsApiUrl}/users`, {
+    const res = await $fetch<any>(`${config.public.apiUrl}/users`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
       }
@@ -44,7 +44,7 @@ const fetchUsers = async () => {
 const fetchHistory = async () => {
   if (!authStore.token) return
   try {
-    let url = `${config.public.mmsApiUrl}/chat/history`
+    let url = `${config.public.apiUrl}/chat/history`
     if (activeTab.value === 'ai') {
       url += '?is_ai=true'
     } else if (activeUserChat.value) {
@@ -92,21 +92,30 @@ const initWebSocket = () => {
     } else if (data.type === 'message') {
       const msg = data
       
-      // Determine if message belongs to active thread
       const isCurrentAI = activeTab.value === 'ai' && msg.is_ai
       const isCurrentDirect = activeTab.value === 'chat' && activeUserChat.value &&
         ((msg.sender_id === activeUserChat.value.id && msg.receiver_id === authStore.user?.id) ||
          (msg.sender_id === authStore.user?.id && msg.receiver_id === activeUserChat.value.id))
 
+      // Always push to the current messages list if it matches the active thread
       if (isCurrentAI || isCurrentDirect) {
         messages.value.push(msg)
         scrollToBottom()
-      } else {
-        // Increment unread count
-        const senderId = msg.sender_id
-        if (senderId !== authStore.user?.id) {
+      }
+
+      // ALWAYS trigger notification, chime sound, and increment unread count for other users' messages
+      const senderId = msg.sender_id
+      if (senderId !== authStore.user?.id) {
+        // If we are currently active on this thread and the chat box is open, we can skip incrementing the badge
+        const isReadingNow = isCurrentDirect && isOpen.value
+        
+        if (!isReadingNow) {
           unreadCounts.value[senderId] = (unreadCounts.value[senderId] || 0) + 1
         }
+        
+        // Trigger browser notification and sound in any condition
+        playNotificationSound()
+        showWebNotification(msg)
       }
     }
   }
@@ -115,6 +124,64 @@ const initWebSocket = () => {
     console.log('Chat WebSocket disconnected, reconnecting...')
     socket.value = null
     setTimeout(initWebSocket, 3000)
+  }
+}
+
+// Total unread count
+const totalUnread = computed(() => {
+  return Object.values(unreadCounts.value).reduce((sum, count) => sum + count, 0)
+})
+
+// Play simple browser-native notification audio chime
+const playNotificationSound = () => {
+  try {
+    const context = new (window.AudioContext || (window as any).webkitAudioContext)()
+    const osc = context.createOscillator()
+    const gain = context.createGain()
+    osc.connect(gain)
+    gain.connect(context.destination)
+    
+    // Play a friendly chime (two-tone beep)
+    osc.frequency.setValueAtTime(523.25, context.currentTime) // C5
+    gain.gain.setValueAtTime(0.1, context.currentTime)
+    osc.start(context.currentTime)
+    osc.stop(context.currentTime + 0.1)
+    
+    setTimeout(() => {
+      const osc2 = context.createOscillator()
+      const gain2 = context.createGain()
+      osc2.connect(gain2)
+      gain2.connect(context.destination)
+      osc2.frequency.setValueAtTime(659.25, context.currentTime) // E5
+      gain2.gain.setValueAtTime(0.1, context.currentTime)
+      osc2.start(context.currentTime)
+      osc2.stop(context.currentTime + 0.15)
+    }, 120)
+  } catch (e) {
+    console.warn('AudioContext not supported or blocked by user gesture', e)
+  }
+}
+
+// Show standard browser HTML5 desktop notifications
+const showWebNotification = (msg: any) => {
+  if (!('Notification' in window)) return
+  
+  const senderName = getUserName(msg.sender_id)
+  
+  if (Notification.permission === 'granted') {
+    new Notification(`New Message from ${senderName}`, {
+      body: msg.content,
+      icon: '/favicon.svg'
+    })
+  } else if (Notification.permission !== 'denied') {
+    Notification.requestPermission().then(permission => {
+      if (permission === 'granted') {
+        new Notification(`New Message from ${senderName}`, {
+          body: msg.content,
+          icon: '/favicon.svg'
+        })
+      }
+    })
   }
 }
 
@@ -179,6 +246,23 @@ watch(isOpen, (newVal) => {
     fetchHistory()
     initWebSocket()
     scrollToBottom()
+    // Reset unread count for the active direct user chat when opening window
+    if (activeUserChat.value) {
+      unreadCounts.value[activeUserChat.value.id] = 0
+    }
+  }
+})
+
+watch(() => authStore.isAuthenticated, (newVal) => {
+  if (newVal) {
+    fetchUsers()
+    initWebSocket()
+  } else {
+    if (socket.value) {
+      socket.value.close()
+      socket.value = null
+    }
+    unreadCounts.value = {}
   }
 })
 
@@ -201,10 +285,18 @@ onBeforeUnmount(() => {
     <!-- Trigger Button -->
     <button
       @click="isOpen = !isOpen"
-      class="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/30 transition-transform duration-300 hover:scale-105 active:scale-95"
+      class="relative flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-xl shadow-blue-500/30 transition-transform duration-300 hover:scale-105 active:scale-95"
     >
       <Icon v-if="!isOpen" name="heroicons:chat-bubble-left-right" class="h-6 w-6" />
       <Icon v-else name="heroicons:x-mark" class="h-6 w-6" />
+      
+      <!-- Unread Badge Indicator -->
+      <span
+        v-if="totalUnread > 0 && !isOpen"
+        class="absolute -top-1.5 -right-1.5 flex h-5.5 min-w-[22px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white ring-2 ring-slate-950"
+      >
+        {{ totalUnread }}
+      </span>
     </button>
 
     <!-- Chat Box Window -->

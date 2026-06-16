@@ -22,9 +22,9 @@ const searchFilter = ref('')
 
 // WebSocket Connection URL
 const wsUrl = computed(() => {
-  const base = config.public.mmsApiUrl
-  const wsProto = base.startsWith('https') ? 'wss' : 'ws'
-  return `${base.replace(/^http[s]?/, wsProto)}/chat/ws?token=${authStore.token}`
+  const base = config.public.apiUrl
+  const wsProto = base && base.startsWith('https') ? 'wss' : 'ws'
+  return `${(base || '').replace(/^http[s]?/, wsProto)}/chat/ws?token=${authStore.token}`
 })
 
 // Filter users list based on search input
@@ -39,7 +39,7 @@ const filteredUsers = computed(() => {
 const fetchUsers = async () => {
   if (!authStore.token) return
   try {
-    const res = await $fetch<any>(`${config.public.mmsApiUrl}/users`, {
+    const res = await $fetch<any>(`${config.public.apiUrl}/users`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
       }
@@ -56,7 +56,7 @@ const fetchUsers = async () => {
 const fetchHistory = async () => {
   if (!authStore.token) return
   try {
-    let url = `${config.public.mmsApiUrl}/chat/history`
+    let url = `${config.public.apiUrl}/chat/history`
     if (activeTab.value === 'ai') {
       url += '?is_ai=true'
     } else if (activeUserChat.value) {
