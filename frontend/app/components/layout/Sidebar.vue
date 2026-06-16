@@ -29,8 +29,6 @@ const navItems = [
   { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] }
 ]
 
-// Append chat
-navItems.push({ labelKey: 'nav.chat', label: 'Chat & AI', path: '/chat', icon: 'heroicons:chat-bubble-left-right' })
 
 const ecosystemItems = [
   { label: 'Fleet Management', path: fmsUrl, icon: 'heroicons:ship-wheel' },
@@ -165,4 +163,5 @@ const filteredNavItems = computed(() => {
     </div>
   </aside>
 </template>
+
 
