@@ -6,7 +6,8 @@
                 "master_warehouses":  "Master Warehouses",
                 "master_units":  "Master Units",
                 "connected_apps":  "Connected Apps",
-                "chat":  "Chat \u0026 AI Assistant"
+                "chat":  "Chat & AI Assistant",
+                "stock_transfer": "Stock Transfer"
             },
     "common":  {
                    "logout":  "Logout",

@@ -6,7 +6,8 @@
                 "master_warehouses":  "主仓库",
                 "master_units":  "主单位",
                 "connected_apps":  "已连接的应用",
-                "chat":  "聊天与人工智能助手"
+                "chat":  "聊天与人工智能助手",
+                "stock_transfer": "库存调拨"
             },
     "common":  {
                    "logout":  "登出",

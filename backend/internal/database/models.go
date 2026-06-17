@@ -66,4 +66,24 @@ func (MasterUnit) TableName() string {
 	return "master_units"
 }
 
+type StockTransfer struct {
+	ID                 uuid.UUID  `gorm:"type:uuid;default:uuid_generate_v4();primaryKey" json:"id"`
+	SourceWarehouse    string     `gorm:"size:255;not null" json:"source_warehouse"`
+	TargetWarehouse    string     `gorm:"size:255;not null" json:"target_warehouse"`
+	ItemName           string     `gorm:"size:255;not null" json:"item_name"`
+	PartNumber         string     `gorm:"size:100" json:"part_number"`
+	Quantity           int        `gorm:"not null" json:"quantity"`
+	Unit               string     `gorm:"size:50;default:'pcs'" json:"unit"`
+	Status             string     `gorm:"size:50;not null;default:'pending'" json:"status"` // 'pending', 'approved', 'rejected'
+	RequestedBy        string     `gorm:"size:255;not null" json:"requested_by"`
+	RequestedRole      string     `gorm:"size:50;not null" json:"requested_role"`
+	ApprovedRejectedBy *string    `gorm:"size:255" json:"approved_rejected_by,omitempty"`
+	Comments           string     `gorm:"type:text" json:"comments"`
+	CompanyID          *uuid.UUID `gorm:"type:uuid" json:"company_id"`
+	CreatedAt          time.Time  `gorm:"not null;default:now()" json:"created_at"`
+	UpdatedAt          time.Time  `gorm:"not null;default:now()" json:"updated_at"`
+}
 
+func (StockTransfer) TableName() string {
+	return "stock_transfers"
+}

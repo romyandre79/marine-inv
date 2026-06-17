@@ -6,7 +6,8 @@
                 "master_warehouses":  "Master Gudang",
                 "master_units":  "Master Satuan",
                 "connected_apps":  "Aplikasi Terhubung",
-                "chat":  "Chat \u0026 Asisten AI"
+                "chat":  "Chat & Asisten AI",
+                "stock_transfer": "Transfer Barang"
             },
     "common":  {
                    "logout":  "Keluar",

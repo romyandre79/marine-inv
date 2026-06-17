@@ -26,7 +26,8 @@ const navItems = [
   { labelKey: 'nav.inventory_stock', label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
   { labelKey: 'nav.master_items', label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
   { labelKey: 'nav.master_warehouses', label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
-  { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] }
+  { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] },
+  { labelKey: 'nav.stock_transfer', label: 'Stock Transfer', path: '/stock-transfer', icon: 'heroicons:arrows-right-left' }
 ]
 
 
