@@ -7,6 +7,15 @@ const langMap: Record<string, string> = { id: 'ID', en: 'EN', zh: '中文' }
 
 const isDark = ref(true)
 
+const displayRole = computed(() => {
+  if (auth.user?.role === 'super_admin') {
+    return 'super_admin'
+  }
+  const activeId = tenant.activeTenantId
+  const compMapping = auth.user?.companies?.find((c: any) => c.company_id === activeId)
+  return compMapping ? compMapping.role : auth.user?.role || 'viewer'
+})
+
 onMounted(async () => {
   if (auth.isAuthenticated) {
     await tenant.fetchCompanies()
@@ -100,7 +109,7 @@ const toggleDarkMode = () => {
         </div>
         <div class="hidden md:block">
           <p class="text-xs font-bold text-slate-200">{{ auth.user?.name }}</p>
-          <p class="text-[10px] font-medium text-slate-500 capitalize">{{ auth.user?.role }}</p>
+          <p class="text-[10px] font-medium text-slate-500 capitalize">{{ displayRole.replace('_', ' ') }}</p>
         </div>
       </div>
     </div>
