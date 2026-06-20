@@ -4,37 +4,15 @@ const auth = useAuth()
 const { isCollapsed, toggle, mobileOpen, closeMobile } = useSidebar()
 const config = useRuntimeConfig()
 
-const getAppUrl = (appCode: string, devPort: string) => {
-  if (import.meta.client) {
-    const hostname = window.location.hostname
-    if (hostname.endsWith('.marines.web.id')) {
-      const parts = hostname.split('.')
-      const domain = parts.slice(parts.indexOf('marines')).join('.')
-      return `https://dev-${appCode}.${domain}`
-    }
-  }
-  return `http://localhost:${devPort}`
-}
-
-const portalUrl = computed(() => getAppUrl('mms', '3003'))
-const fmsUrl = computed(() => getAppUrl('fms', '3005'))
-const crewUrl = computed(() => getAppUrl('hrs', '3011'))
-const finUrl = computed(() => getAppUrl('fin', '3013'))
+const portalUrl = config.public.portalUrl || 'http://localhost:3003'
 
 const navItems = [
-  { labelKey: 'nav.portal_dashboard', label: 'Portal Dashboard', path: portalUrl.value, icon: 'heroicons:home', external: true },
+  { labelKey: 'nav.portal_dashboard', label: 'Portal Dashboard', path: portalUrl, icon: 'heroicons:home', external: true },
   { labelKey: 'nav.inventory_stock', label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
   { labelKey: 'nav.master_items', label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
   { labelKey: 'nav.master_warehouses', label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
   { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] },
   { labelKey: 'nav.stock_transfer', label: 'Stock Transfer', path: '/stock-transfer', icon: 'heroicons:arrows-right-left' }
-]
-
-
-const ecosystemItems = [
-  { label: 'Fleet Management', path: fmsUrl, icon: 'heroicons:ship-wheel' },
-  { label: 'Crew Management', path: crewUrl, icon: 'heroicons:users' },
-  { label: 'Financial Management', path: finUrl, icon: 'heroicons:banknotes' }
 ]
 
 const userRole = computed(() => auth.user?.role || 'viewer')
@@ -120,26 +98,6 @@ const filteredNavItems = computed(() => {
         </template>
       </nav>
 
-      <!-- Connected Ecosystem Section -->
-      <div class="w-full flex flex-col gap-2 border-t border-slate-800/80 pt-4">
-        <p v-if="!isCollapsed" class="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-4 mb-1">
-          {{ $t('nav.connected_apps') }}
-        </p>
-        <nav class="flex flex-col gap-1 w-full">
-          <a
-            v-for="item in ecosystemItems"
-            :key="item.label"
-            :href="item.path.value"
-            class="flex items-center rounded-xl text-sm font-medium transition-all duration-200 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-            :class="isCollapsed ? 'w-10 h-10 justify-center p-0' : 'gap-3 px-4 py-2.5 w-full'"
-            :title="isCollapsed ? item.label : ''"
-            @click="closeMobile"
-          >
-            <Icon :name="item.icon" class="w-5 h-5 shrink-0 text-slate-500" />
-            <span v-if="!isCollapsed" class="truncate text-xs font-semibold">{{ item.label }}</span>
-          </a>
-        </nav>
-      </div>
     </div>
 
     <!-- Footer user summary -->
