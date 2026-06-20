@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 
-definePageMeta({
-  middleware: 'auth'
-})
-
 const authStore = useAuthStore()
 const config = useRuntimeConfig()
 
@@ -193,7 +189,9 @@ watch(activeTab, (newTab) => {
 })
 
 onMounted(() => {
-  if (authStore.isAuthenticated) {
+  if (!authStore.isAuthenticated) {
+    window.location.href = `${config.public.portalUrl || 'http://localhost:3003'}/login`
+  } else {
     fetchUsers()
     fetchHistory()
     initWebSocket()
