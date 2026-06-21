@@ -7,18 +7,41 @@ const tenantStore = useTenantStore()
 const config = useRuntimeConfig()
 
 // State
+// State
 const inventory = ref<any[]>([])
+const vessels = ref<any[]>([])
 const loading = ref(false)
 const errorMsg = ref('')
 const masterItems = ref<any[]>([])
 const masterWarehouses = ref<any[]>([])
 const masterUnits = ref<any[]>([])
+const search = ref('')
 
 // Computed metrics
 const totalItems = computed(() => inventory.value.length)
 const lowStockCount = computed(() => inventory.value.filter((i: any) => i.quantity <= i.minimum_stock && i.quantity > 0).length)
 const outOfStockCount = computed(() => inventory.value.filter((i: any) => i.quantity === 0).length)
 const healthyStockCount = computed(() => inventory.value.filter((i: any) => i.quantity > i.minimum_stock).length)
+
+function getItemVesselName(locationName: string) {
+  if (!locationName) return '-'
+  const wh = masterWarehouses.value.find(w => w.name === locationName)
+  if (!wh || !wh.vessel_id) return '-'
+  const match = vessels.value.find(v => v.id === wh.vessel_id)
+  return match ? match.name : 'Shore Warehouse'
+}
+
+const filteredInventory = computed(() => {
+  if (!search.value) return inventory.value
+  const query = search.value.toLowerCase()
+  return inventory.value.filter(i => {
+    const partNo = (i.part_number || '').toLowerCase()
+    const name = (i.name || '').toLowerCase()
+    const loc = (i.location || '').toLowerCase()
+    const vesselName = getItemVesselName(i.location).toLowerCase()
+    return partNo.includes(query) || name.includes(query) || loc.includes(query) || vesselName.includes(query)
+  })
+})
 
 // SSO Check: Redirect to login if not authenticated
 onMounted(async () => {
@@ -30,6 +53,7 @@ onMounted(async () => {
     fetchMasterItems()
     fetchMasterWarehouses()
     fetchMasterUnits()
+    fetchVessels()
   }
 })
 
@@ -39,6 +63,7 @@ watch(() => tenantStore.activeTenantId, () => {
   fetchMasterItems()
   fetchMasterWarehouses()
   fetchMasterUnits()
+  fetchVessels()
 })
 
 // CRUD State
@@ -140,6 +165,21 @@ async function fetchMasterUnits() {
     }
   } catch (error) {
     console.error('Failed to load master units:', error)
+  }
+}
+
+async function fetchVessels() {
+  try {
+    const res = await $fetch<any>(`${config.public.fmsApiUrl}/vessels`, {
+      headers: {
+        Authorization: `Bearer ${authStore.token}`
+      }
+    })
+    if (res.success && Array.isArray(res.data)) {
+      vessels.value = res.data
+    }
+  } catch (error) {
+    console.error('Failed to load vessels:', error)
   }
 }
 
@@ -274,6 +314,22 @@ async function deleteItem(id: string) {
       </div>
     </div>
 
+    <!-- Toolbar: Search -->
+    <div class="bg-slate-900/40 border border-slate-800 p-4 rounded-2xl flex flex-col md:flex-row items-center gap-4">
+      <div class="relative w-full md:max-w-md">
+        <Icon name="heroicons:magnifying-glass" class="absolute left-3.5 top-3 w-4 h-4 text-slate-500" />
+        <input
+          v-model="search"
+          type="text"
+          placeholder="Search by part number, location, ship/vessel..."
+          class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none transition"
+        />
+      </div>
+      <div class="text-xs text-slate-500 font-medium">
+        Showing {{ filteredInventory.length }} of {{ inventory.length }} registered inventory items
+      </div>
+    </div>
+
     <!-- Inventory Table -->
     <div v-if="loading" class="flex justify-center items-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
@@ -286,18 +342,35 @@ async function deleteItem(id: string) {
           <tr class="border-b border-slate-800 bg-slate-900/80 text-xs font-semibold text-slate-400 uppercase tracking-wider">
             <th class="px-6 py-4">Item Details</th>
             <th class="px-6 py-4">Part Number</th>
+            <th class="px-6 py-4">Vessel (Kapal)</th>
             <th class="px-6 py-4">Warehouse Location</th>
             <th class="px-6 py-4">Stock Level</th>
             <th v-if="hasPermission('inventory:update') || hasPermission('inventory:delete')" class="px-6 py-4 text-right">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-800/60 text-sm">
-          <tr v-for="i in inventory" :key="i.id" class="hover:bg-slate-900/30 transition-colors">
+          <tr v-for="i in filteredInventory" :key="i.id" class="hover:bg-slate-900/30 transition-colors">
             <td class="px-6 py-4">
-              <div class="font-bold text-slate-200">{{ i.name }}</div>
-              <div class="text-xs text-slate-500 mt-0.5 font-medium">Min Stock Target: {{ i.minimum_stock }} {{ i.unit }}</div>
+              <div class="flex items-center gap-2">
+                <Icon
+                  v-if="i.quantity <= i.minimum_stock"
+                  name="heroicons:exclamation-triangle"
+                  class="w-5 h-5 text-amber-500 animate-pulse shrink-0"
+                  title="Below minimum stock target!"
+                />
+                <div>
+                  <div class="font-bold text-slate-200">{{ i.name }}</div>
+                  <div class="text-xs text-slate-500 mt-0.5 font-medium">Min Stock Target: {{ i.minimum_stock }} {{ i.unit }}</div>
+                </div>
+              </div>
             </td>
             <td class="px-6 py-4 font-mono text-slate-300 text-xs">{{ i.part_number || '-' }}</td>
+            <td class="px-6 py-4 text-emerald-450 font-medium font-semibold">
+              <span class="flex items-center gap-1.5">
+                <Icon name="heroicons:ship-wheel" class="w-4 h-4 text-emerald-500" />
+                {{ getItemVesselName(i.location) }}
+              </span>
+            </td>
             <td class="px-6 py-4 text-slate-400">
               <span class="flex items-center gap-1">
                 <Icon name="heroicons:building-office" class="w-4 h-4 text-slate-500" />
@@ -322,8 +395,8 @@ async function deleteItem(id: string) {
               <button v-if="hasPermission('inventory:delete')" @click="deleteItem(i.id)" class="text-rose-400 hover:text-rose-300 text-sm font-semibold transition">Delete</button>
             </td>
           </tr>
-          <tr v-if="inventory.length === 0">
-            <td colspan="5" class="px-6 py-8 text-center text-slate-500">No inventory items found. Select a different company or register items.</td>
+          <tr v-if="filteredInventory.length === 0">
+            <td colspan="6" class="px-6 py-8 text-center text-slate-500">No inventory items found. Try adjusting your search query or select a different company.</td>
           </tr>
         </tbody>
         </table>
