@@ -1,21 +1,22 @@
 {
-    "nav":  {
-                "portal_dashboard":  "Portal Dashboard",
-                "inventory_stock":  "Inventory Stock",
-                "master_items":  "Master Items",
-                "master_warehouses":  "Master Warehouses",
-                "master_units":  "Master Units",
-                "connected_apps":  "Connected Apps",
-                "chat":  "Chat & AI Assistant",
-                "stock_transfer": "Stock Transfer"
-            },
-    "common":  {
-                   "logout":  "Logout",
-                   "loading":  "Loading...",
-                   "actions":  "Actions",
-                   "edit":  "Edit",
-                   "delete":  "Delete",
-                   "save":  "Save",
-                   "cancel":  "Cancel"
-               }
+    "nav": {
+        "dashboard": "Dashboard",
+        "inventory_stock": "Inventory Stock",
+        "master_items": "Master Items",
+        "master_warehouses": "Master Warehouses",
+        "master_units": "Master Units",
+        "connected_apps": "Connected Apps",
+        "chat": "Chat & AI Assistant",
+        "stock_transfer": "Stock Transfer",
+        "back_to_portal": "Back to Portal"
+    },
+    "common": {
+        "logout": "Logout",
+        "loading": "Loading...",
+        "actions": "Actions",
+        "edit": "Edit",
+        "delete": "Delete",
+        "save": "Save",
+        "cancel": "Cancel"
+    }
 }

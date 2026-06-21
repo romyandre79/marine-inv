@@ -1,21 +1,22 @@
 {
-    "nav":  {
-                "portal_dashboard":  "Dashboard Portal",
-                "inventory_stock":  "Stok Inventaris",
-                "master_items":  "Master Barang",
-                "master_warehouses":  "Master Gudang",
-                "master_units":  "Master Satuan",
-                "connected_apps":  "Aplikasi Terhubung",
-                "chat":  "Chat & Asisten AI",
-                "stock_transfer": "Transfer Barang"
-            },
-    "common":  {
-                   "logout":  "Keluar",
-                   "loading":  "Memuat...",
-                   "actions":  "Aksi",
-                   "edit":  "Ubah",
-                   "delete":  "Hapus",
-                   "save":  "Simpan",
-                   "cancel":  "Batal"
-               }
+    "nav": {
+        "dashboard": "Dashboard",
+        "inventory_stock": "Stok Inventaris",
+        "master_items": "Master Barang",
+        "master_warehouses": "Master Gudang",
+        "master_units": "Master Satuan",
+        "connected_apps": "Aplikasi Terhubung",
+        "chat": "Chat & Asisten AI",
+        "stock_transfer": "Transfer Barang",
+        "back_to_portal": "Kembali ke Portal"
+    },
+    "common": {
+        "logout": "Keluar",
+        "loading": "Memuat...",
+        "actions": "Aksi",
+        "edit": "Ubah",
+        "delete": "Hapus",
+        "save": "Simpan",
+        "cancel": "Batal"
+    }
 }

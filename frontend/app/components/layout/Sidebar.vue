@@ -7,12 +7,14 @@ const config = useRuntimeConfig()
 const portalUrl = config.public.portalUrl || 'http://localhost:3003'
 
 const navItems = [
-  { labelKey: 'nav.portal_dashboard', label: 'Portal Dashboard', path: portalUrl, icon: 'heroicons:home', external: true },
+  { labelKey: 'nav.back_to_portal', label: 'Back to Portal', path: portalUrl, icon: 'heroicons:home', external: true },
+  { labelKey: 'nav.dashboard', label: 'Dashboard', path: '/', icon: 'heroicons:chart-bar' },
   { labelKey: 'nav.inventory_stock', label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
   { labelKey: 'nav.master_items', label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
   { labelKey: 'nav.master_warehouses', label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
   { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] },
-  { labelKey: 'nav.stock_transfer', label: 'Stock Transfer', path: '/stock-transfer', icon: 'heroicons:arrows-right-left' }
+  { labelKey: 'nav.stock_transfer', label: 'Stock Transfer', path: '/stock-transfer', icon: 'heroicons:arrows-right-left' },
+  { labelKey: 'nav.chat', label: 'Chat & Asisten AI', path: '/chat', icon: 'heroicons:chat-bubble-left-right' }
 ]
 
 const userRole = computed(() => auth.user?.role || 'viewer')

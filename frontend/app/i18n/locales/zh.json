@@ -1,21 +1,22 @@
 {
-    "nav":  {
-                "portal_dashboard":  "门户仪表板",
-                "inventory_stock":  "库存量",
-                "master_items":  "主料项",
-                "master_warehouses":  "主仓库",
-                "master_units":  "主单位",
-                "connected_apps":  "已连接的应用",
-                "chat":  "聊天与人工智能助手",
-                "stock_transfer": "库存调拨"
-            },
-    "common":  {
-                   "logout":  "登出",
-                   "loading":  "加载中...",
-                   "actions":  "操作",
-                   "edit":  "编辑",
-                   "delete":  "删除",
-                   "save":  "保存",
-                   "cancel":  "取消"
-               }
+    "nav": {
+        "dashboard": "Dashboard",
+        "inventory_stock": "Inventory Stock",
+        "master_items": "Master Items",
+        "master_warehouses": "Master Warehouses",
+        "master_units": "Master Units",
+        "connected_apps": "Connected Apps",
+        "chat": "Chat & AI Assistant",
+        "stock_transfer": "Stock Transfer",
+        "back_to_portal": "Back to Portal"
+    },
+    "common": {
+        "logout": "登出",
+        "loading": "加载中...",
+        "actions": "操作",
+        "edit": "编辑",
+        "delete": "删除",
+        "save": "保存",
+        "cancel": "取消"
+    }
 }
