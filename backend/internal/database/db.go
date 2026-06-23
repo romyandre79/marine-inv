@@ -3,10 +3,12 @@ package database
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -80,4 +82,66 @@ func InitDB() *gorm.DB {
 	log.Printf("Database connection successfully established for INVENTORY (sslmode=%s, max_open=%d, max_idle=%d, max_lifetime=%dm).",
 		sslmode, maxOpen, maxIdle, maxLifetime)
 	return DB
+}
+
+func Paginate(c *gin.Context) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		if c.Query("all") == "true" {
+			return db
+		}
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		if page <= 0 {
+			page = 1
+		}
+
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+		switch {
+		case limit > 100:
+			limit = 100
+		case limit <= 0:
+			limit = 10
+		}
+
+		offset := (page - 1) * limit
+		return db.Offset(offset).Limit(limit)
+	}
+}
+
+type PaginationMeta struct {
+	Total      int64 `json:"total"`
+	Page       int   `json:"page"`
+	Limit      int   `json:"limit"`
+	TotalPages int   `json:"total_pages"`
+}
+
+func GetPaginationMeta(c *gin.Context, total int64) PaginationMeta {
+	if c.Query("all") == "true" {
+		return PaginationMeta{
+			Total:      total,
+			Page:       1,
+			Limit:      int(total),
+			TotalPages: 1,
+		}
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if page <= 0 {
+		page = 1
+	}
+
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	switch {
+	case limit > 100:
+		limit = 100
+	case limit <= 0:
+		limit = 10
+	}
+
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+
+	return PaginationMeta{
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+	}
 }

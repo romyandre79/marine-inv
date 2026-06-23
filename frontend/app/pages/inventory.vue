@@ -17,8 +17,14 @@ const masterWarehouses = ref<any[]>([])
 const masterUnits = ref<any[]>([])
 const search = ref('')
 
+// Pagination state
+const currentPage = ref(1)
+const perPage = ref(10)
+const totalItemsState = ref(0)
+const totalPages = ref(1)
+
 // Computed metrics
-const totalItems = computed(() => inventory.value.length)
+const totalItems = computed(() => totalItemsState.value)
 const lowStockCount = computed(() => inventory.value.filter((i: any) => i.quantity <= i.minimum_stock && i.quantity > 0).length)
 const outOfStockCount = computed(() => inventory.value.filter((i: any) => i.quantity === 0).length)
 const healthyStockCount = computed(() => inventory.value.filter((i: any) => i.quantity > i.minimum_stock).length)
@@ -32,15 +38,12 @@ function getItemVesselName(locationName: string) {
 }
 
 const filteredInventory = computed(() => {
-  if (!search.value) return inventory.value
-  const query = search.value.toLowerCase()
-  return inventory.value.filter(i => {
-    const partNo = (i.part_number || '').toLowerCase()
-    const name = (i.name || '').toLowerCase()
-    const loc = (i.location || '').toLowerCase()
-    const vesselName = getItemVesselName(i.location).toLowerCase()
-    return partNo.includes(query) || name.includes(query) || loc.includes(query) || vesselName.includes(query)
-  })
+  return inventory.value
+})
+
+watch(search, () => {
+  currentPage.value = 1
+  fetchInventory()
 })
 
 // SSO Check: Redirect to login if not authenticated
@@ -102,14 +105,23 @@ async function fetchInventory() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
-    const res = await $fetch<any>(`${config.public.apiUrl}/inventory${companyQuery}`, {
+    let companyQuery = tenantStore.activeTenantId ? `&company_id=${tenantStore.activeTenantId}` : ''
+    if (search.value) {
+      companyQuery += `&search=${encodeURIComponent(search.value)}`
+    }
+    const res = await $fetch<any>(`${config.public.apiUrl}/inventory?page=${currentPage.value}&limit=${perPage.value}${companyQuery}`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
       }
     })
     if (res.success) {
       inventory.value = res.data
+      if (res.meta) {
+        currentPage.value = res.meta.page
+        perPage.value = res.meta.limit
+        totalItemsState.value = res.meta.total
+        totalPages.value = res.meta.total_pages
+      }
     }
   } catch (error: any) {
     errorMsg.value = error.data?.message || 'Failed to connect to Inventory Backend service.'
@@ -121,9 +133,15 @@ async function fetchInventory() {
   }
 }
 
+function changePage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  fetchInventory()
+}
+
 async function fetchMasterItems() {
   try {
-    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
     const res = await $fetch<any>(`${config.public.apiUrl}/master-items${companyQuery}`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
@@ -139,7 +157,7 @@ async function fetchMasterItems() {
 
 async function fetchMasterWarehouses() {
   try {
-    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
     const res = await $fetch<any>(`${config.public.apiUrl}/master-warehouses${companyQuery}`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
@@ -155,7 +173,7 @@ async function fetchMasterWarehouses() {
 
 async function fetchMasterUnits() {
   try {
-    const res = await $fetch<any>(`${config.public.apiUrl}/master-units`, {
+    const res = await $fetch<any>(`${config.public.apiUrl}/master-units?all=true`, {
       headers: {
         Authorization: `Bearer ${authStore.token}`
       }
@@ -170,11 +188,9 @@ async function fetchMasterUnits() {
 
 async function fetchVessels() {
   try {
-    const res = await $fetch<any>(`${config.public.fmsApiUrl}/vessels`, {
-      headers: {
-        Authorization: `Bearer ${authStore.token}`
-      }
-    })
+    const headers = { Authorization: `Bearer ${authStore.token}` }
+    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
+    const res = await $fetch<any>(`${config.public.apiUrl}/vessels${companyQuery}`, { headers })
     if (res.success && Array.isArray(res.data)) {
       vessels.value = res.data
     }
@@ -267,6 +283,60 @@ async function deleteItem(id: string) {
     alert(error.data?.message || 'Failed to delete inventory item')
   }
 }
+
+const successMsg = ref('')
+
+async function handleExportExcel() {
+  try {
+    const companyQuery = tenantStore.activeTenantId ? `company_id=${tenantStore.activeTenantId}` : ''
+    const searchQuery = search.value ? `&search=${encodeURIComponent(search.value)}` : ''
+    const res = await $fetch<Blob>(`${config.public.apiUrl}/inventory/export?${companyQuery}${searchQuery}`, {
+      headers: { Authorization: `Bearer ${authStore.token}` },
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(res)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', 'inventory.xlsx')
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    successMsg.value = 'Inventory exported successfully!'
+    setTimeout(() => successMsg.value = '', 4000)
+  } catch (error: any) {
+    errorMsg.value = 'Failed to export inventory.'
+  }
+}
+
+async function handleImportExcel(event: any) {
+  const file = event.target.files[0]
+  if (!file) return
+
+  const formData = new FormData()
+  formData.append('file', file)
+
+  loading.value = true
+  errorMsg.value = ''
+  successMsg.value = ''
+
+  try {
+    const res = await $fetch<any>(`${config.public.apiUrl}/inventory/import`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authStore.token}` },
+      body: formData
+    })
+    if (res.success) {
+      successMsg.value = res.message || 'Inventory imported successfully!'
+      fetchInventory()
+      setTimeout(() => successMsg.value = '', 4000)
+    }
+  } catch (error: any) {
+    errorMsg.value = error.data?.message || 'Failed to import inventory.'
+  } finally {
+    loading.value = false
+    event.target.value = ''
+  }
+}
 </script>
 
 <template>
@@ -278,14 +348,35 @@ async function deleteItem(id: string) {
         <p class="text-sm text-slate-400">Track and manage your physical stock levels here.</p>
       </div>
 
-      <button
-        v-if="hasPermission('inventory:create')"
-        @click="openAddModal"
-        class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition duration-200 shadow-lg shadow-emerald-600/20 flex items-center gap-2"
-      >
+      <div class="flex items-center gap-3">
+        <label
+          v-if="hasPermission('inventory:create') || hasPermission('inventory:update')"
+          class="cursor-pointer bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl border border-slate-800 transition duration-205 flex items-center space-x-2 shadow"
+        >
+          <span>📥 Import XLS</span>
+          <input type="file" accept=".xlsx, .xls" class="hidden" @change="handleImportExcel" />
+        </label>
+        <button
+          v-if="hasPermission('inventory:read')"
+          @click="handleExportExcel"
+          class="bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm px-4 py-2.5 rounded-xl border border-slate-800 transition duration-205 flex items-center space-x-2 shadow"
+        >
+          <span>📤 Export XLS</span>
+        </button>
+        <button
+          v-if="hasPermission('inventory:create')"
+          @click="openAddModal"
+          class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition duration-200 shadow-lg shadow-emerald-600/20 flex items-center gap-2"
+        >
         <Icon name="heroicons:plus" class="w-4 h-4" />
         Add Stock Item
       </button>
+    </div>
+
+    <!-- Success message banner -->
+    <div v-if="successMsg" class="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl flex items-center space-x-2">
+      <Icon name="heroicons:check-circle" class="w-5 h-5 text-emerald-400" />
+      <span>{{ successMsg }}</span>
     </div>
 
     <!-- Error message banner -->
@@ -400,6 +491,28 @@ async function deleteItem(id: string) {
           </tr>
         </tbody>
         </table>
+      </div>
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="bg-slate-900/40 px-6 py-4 border-t border-slate-800 flex items-center justify-between text-sm text-slate-400">
+        <div>
+          Showing page <span class="font-bold text-white">{{ currentPage }}</span> of <span class="font-bold text-white">{{ totalPages }}</span> (Total: <span class="font-bold text-white">{{ totalItems }}</span>)
+        </div>
+        <div class="flex items-center space-x-2">
+          <button 
+            @click="changePage(currentPage - 1)" 
+            :disabled="currentPage <= 1"
+            class="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-800 text-slate-300 transition"
+          >
+            Previous
+          </button>
+          <button 
+            @click="changePage(currentPage + 1)" 
+            :disabled="currentPage >= totalPages"
+            class="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-800 text-slate-300 transition"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
 

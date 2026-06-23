@@ -13,6 +13,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/marines-dev/inventory-portal/internal/audit"
 	"github.com/marines-dev/inventory-portal/internal/database"
+	"github.com/marines-dev/inventory-portal/internal/excel"
 	"github.com/marines-dev/inventory-portal/internal/middleware"
 )
 
@@ -83,6 +84,7 @@ func main() {
 				return
 			}
 			companyID := c.Query("company_id")
+			search := c.Query("search")
 			query := database.DB
 			if companyID != "" {
 				parsed, err := uuid.Parse(companyID)
@@ -90,12 +92,181 @@ func main() {
 					query = query.Where("company_id = ?", parsed)
 				}
 			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR part_number LIKE ? OR location LIKE ?", s, s, s)
+			}
+			var list []database.InventoryItem
+			var total int64
+			query.Model(&database.InventoryItem{}).Count(&total)
+
+			if err := query.Order("name asc").Scopes(database.Paginate(c)).Find(&list).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch inventory items"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list, "meta": database.GetPaginationMeta(c, total)})
+		})
+
+		api.GET("/inventory/export", func(c *gin.Context) {
+			if !hasPermission(c, "inventory:read") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			companyID := c.Query("company_id")
+			search := c.Query("search")
+			query := database.DB
+			if companyID != "" {
+				parsed, err := uuid.Parse(companyID)
+				if err == nil {
+					query = query.Where("company_id = ?", parsed)
+				}
+			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR part_number LIKE ? OR location LIKE ?", s, s, s)
+			}
 			var list []database.InventoryItem
 			if err := query.Order("name asc").Find(&list).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch inventory items"})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+
+			headers := []string{"ID", "Name", "PartNumber", "Quantity", "Unit", "Location", "MinimumStock", "CompanyID"}
+			var data []map[string]interface{}
+			for _, item := range list {
+				var compID string
+				if item.CompanyID != nil {
+					compID = item.CompanyID.String()
+				}
+				data = append(data, map[string]interface{}{
+					"ID":           item.ID.String(),
+					"Name":         item.Name,
+					"PartNumber":   item.PartNumber,
+					"Quantity":     item.Quantity,
+					"Unit":         item.Unit,
+					"Location":     item.Location,
+					"MinimumStock": item.MinimumStock,
+					"CompanyID":    compID,
+				})
+			}
+
+			c.Header("Content-Disposition", "attachment; filename=inventory.xlsx")
+			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+			if err := excel.ExportToExcel("Inventory", headers, data, c.Writer); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate Excel: " + err.Error()})
+				return
+			}
+		})
+
+		api.POST("/inventory/import", func(c *gin.Context) {
+			if !hasPermission(c, "inventory:create") && !hasPermission(c, "inventory:update") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			file, _, err := c.Request.FormFile("file")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "File is required"})
+				return
+			}
+			defer file.Close()
+
+			records, err := excel.ParseExcel(file, "Inventory")
+			if err != nil {
+				records, err = excel.ParseExcel(file, "")
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Failed to parse excel file: " + err.Error()})
+					return
+				}
+			}
+
+			tx := database.DB.Begin()
+			var importedCount int
+			for _, record := range records {
+				name := record["Name"]
+				if name == "" {
+					continue
+				}
+
+				var qty int
+				fmt.Sscanf(record["Quantity"], "%d", &qty)
+				var minStock int
+				fmt.Sscanf(record["MinimumStock"], "%d", &minStock)
+
+				var compID *uuid.UUID
+				if record["CompanyID"] != "" {
+					parsed, err := uuid.Parse(record["CompanyID"])
+					if err == nil {
+						compID = &parsed
+					}
+				}
+
+				item := database.InventoryItem{
+					Name:         name,
+					PartNumber:   record["PartNumber"],
+					Quantity:     qty,
+					Unit:         record["Unit"],
+					Location:     record["Location"],
+					MinimumStock: minStock,
+					CompanyID:    compID,
+				}
+
+				var existing database.InventoryItem
+				idStr := record["ID"]
+				hasExisting := false
+
+				if idStr != "" {
+					parsedID, err := uuid.Parse(idStr)
+					if err == nil {
+						if err := tx.Where("id = ?", parsedID).First(&existing).Error; err == nil {
+							hasExisting = true
+						}
+					}
+				}
+
+				if !hasExisting {
+					q := tx.Where("name = ? AND part_number = ? AND location = ?", item.Name, item.PartNumber, item.Location)
+					if item.CompanyID != nil {
+						q = q.Where("company_id = ?", item.CompanyID)
+					} else {
+						q = q.Where("company_id IS NULL")
+					}
+					if err := q.First(&existing).Error; err == nil {
+						hasExisting = true
+					}
+				}
+
+				if hasExisting {
+					existing.Quantity = item.Quantity
+					existing.Unit = item.Unit
+					existing.MinimumStock = item.MinimumStock
+					if err := tx.Save(&existing).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update item: " + err.Error()})
+						return
+					}
+				} else {
+					if idStr != "" {
+						parsedID, err := uuid.Parse(idStr)
+						if err == nil {
+							item.ID = parsedID
+						} else {
+							item.ID = uuid.New()
+						}
+					} else {
+						item.ID = uuid.New()
+					}
+					if err := tx.Create(&item).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create item: " + err.Error()})
+						return
+					}
+				}
+				importedCount++
+			}
+
+			tx.Commit()
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("Successfully imported %d inventory items", importedCount)})
 		})
 
 		api.POST("/inventory", func(c *gin.Context) {
@@ -188,6 +359,7 @@ func main() {
 				return
 			}
 			companyID := c.Query("company_id")
+			search := c.Query("search")
 			query := database.DB
 			if companyID != "" {
 				parsed, err := uuid.Parse(companyID)
@@ -195,12 +367,175 @@ func main() {
 					query = query.Where("company_id = ?", parsed)
 				}
 			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR part_number LIKE ? OR description LIKE ?", s, s, s)
+			}
+			var list []database.MasterItem
+			var total int64
+			query.Model(&database.MasterItem{}).Count(&total)
+
+			if err := query.Order("name asc").Scopes(database.Paginate(c)).Find(&list).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master items"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list, "meta": database.GetPaginationMeta(c, total)})
+		})
+
+		api.GET("/master-items/export", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:read") && !hasPermission(c, "master_items:read") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			companyID := c.Query("company_id")
+			search := c.Query("search")
+			query := database.DB
+			if companyID != "" {
+				parsed, err := uuid.Parse(companyID)
+				if err == nil {
+					query = query.Where("company_id = ?", parsed)
+				}
+			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR part_number LIKE ? OR description LIKE ?", s, s, s)
+			}
 			var list []database.MasterItem
 			if err := query.Order("name asc").Find(&list).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master items"})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+
+			headers := []string{"ID", "Name", "PartNumber", "Unit", "Description", "CompanyID"}
+			var data []map[string]interface{}
+			for _, item := range list {
+				var compID string
+				if item.CompanyID != nil {
+					compID = item.CompanyID.String()
+				}
+				data = append(data, map[string]interface{}{
+					"ID":          item.ID.String(),
+					"Name":        item.Name,
+					"PartNumber":  item.PartNumber,
+					"Unit":        item.Unit,
+					"Description": item.Description,
+					"CompanyID":   compID,
+				})
+			}
+
+			c.Header("Content-Disposition", "attachment; filename=master-items.xlsx")
+			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+			if err := excel.ExportToExcel("MasterItems", headers, data, c.Writer); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate Excel: " + err.Error()})
+				return
+			}
+		})
+
+		api.POST("/master-items/import", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:create") && !hasPermission(c, "master_items:create") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			file, _, err := c.Request.FormFile("file")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "File is required"})
+				return
+			}
+			defer file.Close()
+
+			records, err := excel.ParseExcel(file, "MasterItems")
+			if err != nil {
+				records, err = excel.ParseExcel(file, "")
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Failed to parse excel file: " + err.Error()})
+					return
+				}
+			}
+
+			tx := database.DB.Begin()
+			var importedCount int
+			for _, record := range records {
+				name := record["Name"]
+				if name == "" {
+					continue
+				}
+
+				var compID *uuid.UUID
+				if record["CompanyID"] != "" {
+					parsed, err := uuid.Parse(record["CompanyID"])
+					if err == nil {
+						compID = &parsed
+					}
+				}
+
+				item := database.MasterItem{
+					Name:        name,
+					PartNumber:  record["PartNumber"],
+					Unit:        record["Unit"],
+					Description: record["Description"],
+					CompanyID:   compID,
+				}
+
+				var existing database.MasterItem
+				idStr := record["ID"]
+				hasExisting := false
+
+				if idStr != "" {
+					parsedID, err := uuid.Parse(idStr)
+					if err == nil {
+						if err := tx.Where("id = ?", parsedID).First(&existing).Error; err == nil {
+							hasExisting = true
+						}
+					}
+				}
+
+				if !hasExisting {
+					q := tx.Where("name = ? AND part_number = ?", item.Name, item.PartNumber)
+					if item.CompanyID != nil {
+						q = q.Where("company_id = ?", item.CompanyID)
+					} else {
+						q = q.Where("company_id IS NULL")
+					}
+					if err := q.First(&existing).Error; err == nil {
+						hasExisting = true
+					}
+				}
+
+				if hasExisting {
+					existing.Unit = item.Unit
+					existing.Description = item.Description
+					if err := tx.Save(&existing).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update item: " + err.Error()})
+						return
+					}
+				} else {
+					if idStr != "" {
+						parsedID, err := uuid.Parse(idStr)
+						if err == nil {
+							item.ID = parsedID
+						} else {
+							item.ID = uuid.New()
+						}
+					} else {
+						item.ID = uuid.New()
+					}
+					if err := tx.Create(&item).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create item: " + err.Error()})
+						return
+					}
+				}
+				importedCount++
+			}
+
+			tx.Commit()
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("Successfully imported %d master items", importedCount)})
 		})
 
 		api.POST("/master-items", func(c *gin.Context) {
@@ -297,6 +632,7 @@ func main() {
 				return
 			}
 			companyID := c.Query("company_id")
+			search := c.Query("search")
 			query := database.DB
 			if companyID != "" {
 				parsed, err := uuid.Parse(companyID)
@@ -304,12 +640,187 @@ func main() {
 					query = query.Where("company_id = ?", parsed)
 				}
 			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR code LIKE ? OR address LIKE ?", s, s, s)
+			}
+			var list []database.MasterWarehouse
+			var total int64
+			query.Model(&database.MasterWarehouse{}).Count(&total)
+
+			if err := query.Order("name asc").Scopes(database.Paginate(c)).Find(&list).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master warehouses"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list, "meta": database.GetPaginationMeta(c, total)})
+		})
+
+		api.GET("/master-warehouses/export", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:read") && !hasPermission(c, "master_warehouses:read") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			companyID := c.Query("company_id")
+			search := c.Query("search")
+			query := database.DB
+			if companyID != "" {
+				parsed, err := uuid.Parse(companyID)
+				if err == nil {
+					query = query.Where("company_id = ?", parsed)
+				}
+			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR code LIKE ? OR address LIKE ?", s, s, s)
+			}
 			var list []database.MasterWarehouse
 			if err := query.Order("name asc").Find(&list).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master warehouses"})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+
+			headers := []string{"ID", "Name", "Code", "Address", "VesselID", "CompanyID"}
+			var data []map[string]interface{}
+			for _, item := range list {
+				var compID string
+				if item.CompanyID != nil {
+					compID = item.CompanyID.String()
+				}
+				var vID string
+				if item.VesselID != nil {
+					vID = item.VesselID.String()
+				}
+				data = append(data, map[string]interface{}{
+					"ID":        item.ID.String(),
+					"Name":      item.Name,
+					"Code":      item.Code,
+					"Address":   item.Address,
+					"VesselID":  vID,
+					"CompanyID": compID,
+				})
+			}
+
+			c.Header("Content-Disposition", "attachment; filename=master-warehouses.xlsx")
+			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+			if err := excel.ExportToExcel("MasterWarehouses", headers, data, c.Writer); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate Excel: " + err.Error()})
+				return
+			}
+		})
+
+		api.POST("/master-warehouses/import", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:create") && !hasPermission(c, "master_warehouses:create") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			file, _, err := c.Request.FormFile("file")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "File is required"})
+				return
+			}
+			defer file.Close()
+
+			records, err := excel.ParseExcel(file, "MasterWarehouses")
+			if err != nil {
+				records, err = excel.ParseExcel(file, "")
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Failed to parse excel file: " + err.Error()})
+					return
+				}
+			}
+
+			tx := database.DB.Begin()
+			var importedCount int
+			for _, record := range records {
+				name := record["Name"]
+				if name == "" {
+					continue
+				}
+
+				var compID *uuid.UUID
+				if record["CompanyID"] != "" {
+					parsed, err := uuid.Parse(record["CompanyID"])
+					if err == nil {
+						compID = &parsed
+					}
+				}
+
+				var vID *uuid.UUID
+				if record["VesselID"] != "" {
+					parsed, err := uuid.Parse(record["VesselID"])
+					if err == nil {
+						vID = &parsed
+					}
+				}
+
+				item := database.MasterWarehouse{
+					Name:      name,
+					Code:      record["Code"],
+					Address:   record["Address"],
+					VesselID:  vID,
+					CompanyID: compID,
+				}
+
+				var existing database.MasterWarehouse
+				idStr := record["ID"]
+				hasExisting := false
+
+				if idStr != "" {
+					parsedID, err := uuid.Parse(idStr)
+					if err == nil {
+						if err := tx.Where("id = ?", parsedID).First(&existing).Error; err == nil {
+							hasExisting = true
+						}
+					}
+				}
+
+				if !hasExisting {
+					q := tx.Where("name = ? OR code = ?", item.Name, item.Code)
+					if item.CompanyID != nil {
+						q = q.Where("company_id = ?", item.CompanyID)
+					} else {
+						q = q.Where("company_id IS NULL")
+					}
+					if err := q.First(&existing).Error; err == nil {
+						hasExisting = true
+					}
+				}
+
+				if hasExisting {
+					existing.Address = item.Address
+					existing.VesselID = item.VesselID
+					if err := tx.Save(&existing).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update warehouse: " + err.Error()})
+						return
+					}
+				} else {
+					if idStr != "" {
+						parsedID, err := uuid.Parse(idStr)
+						if err == nil {
+							item.ID = parsedID
+						} else {
+							item.ID = uuid.New()
+						}
+					} else {
+						item.ID = uuid.New()
+					}
+					if err := tx.Create(&item).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create warehouse: " + err.Error()})
+						return
+					}
+				}
+				importedCount++
+			}
+
+			tx.Commit()
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("Successfully imported %d warehouses", importedCount)})
 		})
 
 		api.POST("/master-warehouses", func(c *gin.Context) {
@@ -405,13 +916,164 @@ func main() {
 				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
 				return
 			}
+			search := c.Query("search")
+			query := database.DB.Model(&database.MasterUnit{})
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR code LIKE ?", s, s)
+			}
+			var list []database.MasterUnit
+			var total int64
+			query.Count(&total)
+
+			if err := query.Order("name asc").Scopes(database.Paginate(c)).Find(&list).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master units"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list, "meta": database.GetPaginationMeta(c, total)})
+		})
+
+		api.GET("/master-units/export", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:read") && !hasPermission(c, "master_units:read") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			search := c.Query("search")
 			query := database.DB
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("name LIKE ? OR code LIKE ?", s, s)
+			}
 			var list []database.MasterUnit
 			if err := query.Order("name asc").Find(&list).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch master units"})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+
+			headers := []string{"ID", "Name", "Code", "CompanyID"}
+			var data []map[string]interface{}
+			for _, item := range list {
+				var compID string
+				if item.CompanyID != nil {
+					compID = item.CompanyID.String()
+				}
+				data = append(data, map[string]interface{}{
+					"ID":        item.ID.String(),
+					"Name":      item.Name,
+					"Code":      item.Code,
+					"CompanyID": compID,
+				})
+			}
+
+			c.Header("Content-Disposition", "attachment; filename=master-units.xlsx")
+			c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+			if err := excel.ExportToExcel("MasterUnits", headers, data, c.Writer); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to generate Excel: " + err.Error()})
+				return
+			}
+		})
+
+		api.POST("/master-units/import", func(c *gin.Context) {
+			role, _ := c.Get("role")
+			isAdmin := role == "super_admin" || role == "company_admin" || role == "admin"
+			if !isAdmin && !hasPermission(c, "inventory:create") && !hasPermission(c, "master_units:create") {
+				c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+				return
+			}
+			file, _, err := c.Request.FormFile("file")
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "File is required"})
+				return
+			}
+			defer file.Close()
+
+			records, err := excel.ParseExcel(file, "MasterUnits")
+			if err != nil {
+				records, err = excel.ParseExcel(file, "")
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Failed to parse excel file: " + err.Error()})
+					return
+				}
+			}
+
+			tx := database.DB.Begin()
+			var importedCount int
+			for _, record := range records {
+				name := record["Name"]
+				if name == "" {
+					continue
+				}
+
+				var compID *uuid.UUID
+				if record["CompanyID"] != "" {
+					parsed, err := uuid.Parse(record["CompanyID"])
+					if err == nil {
+						compID = &parsed
+					}
+				}
+
+				item := database.MasterUnit{
+					Name:      name,
+					Code:      record["Code"],
+					CompanyID: compID,
+				}
+
+				var existing database.MasterUnit
+				idStr := record["ID"]
+				hasExisting := false
+
+				if idStr != "" {
+					parsedID, err := uuid.Parse(idStr)
+					if err == nil {
+						if err := tx.Where("id = ?", parsedID).First(&existing).Error; err == nil {
+							hasExisting = true
+						}
+					}
+				}
+
+				if !hasExisting {
+					q := tx.Where("name = ? OR code = ?", item.Name, item.Code)
+					if item.CompanyID != nil {
+						q = q.Where("company_id = ?", item.CompanyID)
+					} else {
+						q = q.Where("company_id IS NULL")
+					}
+					if err := q.First(&existing).Error; err == nil {
+						hasExisting = true
+					}
+				}
+
+				if hasExisting {
+					if err := tx.Save(&existing).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to update unit: " + err.Error()})
+						return
+					}
+				} else {
+					if idStr != "" {
+						parsedID, err := uuid.Parse(idStr)
+						if err == nil {
+							item.ID = parsedID
+						} else {
+							item.ID = uuid.New()
+						}
+					} else {
+						item.ID = uuid.New()
+					}
+					if err := tx.Create(&item).Error; err != nil {
+						tx.Rollback()
+						c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to create unit: " + err.Error()})
+						return
+					}
+				}
+				importedCount++
+			}
+
+			tx.Commit()
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": fmt.Sprintf("Successfully imported %d units", importedCount)})
 		})
 
 		api.POST("/master-units", func(c *gin.Context) {
@@ -500,6 +1162,7 @@ func main() {
 		// Stock Transfers API
 		api.GET("/stock-transfers", func(c *gin.Context) {
 			companyID := c.Query("company_id")
+			search := c.Query("search")
 			query := database.DB
 			if companyID != "" {
 				parsed, err := uuid.Parse(companyID)
@@ -507,12 +1170,19 @@ func main() {
 					query = query.Where("company_id = ?", parsed)
 				}
 			}
+			if search != "" {
+				s := "%" + search + "%"
+				query = query.Where("item_name LIKE ? OR source_warehouse LIKE ? OR target_warehouse LIKE ? OR requested_by LIKE ?", s, s, s, s)
+			}
 			var list []database.StockTransfer
-			if err := query.Order("created_at desc").Find(&list).Error; err != nil {
+			var total int64
+			query.Model(&database.StockTransfer{}).Count(&total)
+
+			if err := query.Order("created_at desc").Scopes(database.Paginate(c)).Find(&list).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "Failed to fetch stock transfers"})
 				return
 			}
-			c.JSON(http.StatusOK, gin.H{"success": true, "data": list})
+			c.JSON(http.StatusOK, gin.H{"success": true, "data": list, "meta": database.GetPaginationMeta(c, total)})
 		})
 
 		api.POST("/stock-transfers", func(c *gin.Context) {

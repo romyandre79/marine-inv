@@ -14,6 +14,12 @@ const loading = ref(false)
 const errorMsg = ref('')
 const search = ref('')
 
+// Pagination state
+const currentPage = ref(1)
+const perPage = ref(10)
+const totalItemsState = ref(0)
+const totalPages = ref(1)
+
 // Form State
 const showRequestModal = ref(false)
 const showRejectModal = ref(false)
@@ -47,21 +53,36 @@ onMounted(async () => {
 
 // Watch tenant change
 watch(() => tenantStore.activeTenantId, () => {
+  currentPage.value = 1
   fetchTransfers()
   fetchWarehouses()
   fetchInventory()
+})
+
+watch(search, () => {
+  currentPage.value = 1
+  fetchTransfers()
 })
 
 async function fetchTransfers() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
-    const res = await $fetch<any>(`${config.public.apiUrl}/stock-transfers${companyQuery}`, {
+    let companyQuery = tenantStore.activeTenantId ? `&company_id=${tenantStore.activeTenantId}` : ''
+    if (search.value) {
+      companyQuery += `&search=${encodeURIComponent(search.value)}`
+    }
+    const res = await $fetch<any>(`${config.public.apiUrl}/stock-transfers?page=${currentPage.value}&limit=${perPage.value}${companyQuery}`, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     })
     if (res.success) {
       transfers.value = res.data
+      if (res.meta) {
+        currentPage.value = res.meta.page
+        perPage.value = res.meta.limit
+        totalItemsState.value = res.meta.total
+        totalPages.value = res.meta.total_pages
+      }
     }
   } catch (error: any) {
     errorMsg.value = error.data?.message || 'Failed to fetch stock transfers.'
@@ -70,9 +91,15 @@ async function fetchTransfers() {
   }
 }
 
+function changePage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  fetchTransfers()
+}
+
 async function fetchWarehouses() {
   try {
-    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
     const res = await $fetch<any>(`${config.public.apiUrl}/master-warehouses${companyQuery}`, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     })
@@ -86,7 +113,7 @@ async function fetchWarehouses() {
 
 async function fetchInventory() {
   try {
-    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+    const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
     const res = await $fetch<any>(`${config.public.apiUrl}/inventory${companyQuery}`, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     })
@@ -116,14 +143,7 @@ const maxAvailableQuantity = computed(() => {
 
 // Filtered transfers based on search query
 const filteredTransfers = computed(() => {
-  if (!search.value) return transfers.value
-  const query = search.value.toLowerCase()
-  return transfers.value.filter(t => 
-    t.item_name.toLowerCase().includes(query) ||
-    t.source_warehouse.toLowerCase().includes(query) ||
-    t.target_warehouse.toLowerCase().includes(query) ||
-    t.requested_by.toLowerCase().includes(query)
-  )
+  return transfers.value
 })
 
 function openRequestModal() {
@@ -363,6 +383,28 @@ function canAction(transfer: any): boolean {
             </tr>
           </tbody>
         </table>
+      </div>
+      <!-- Pagination -->
+      <div v-if="totalPages > 1" class="bg-slate-900/40 px-6 py-4 border-t border-slate-800 flex items-center justify-between text-sm text-slate-400">
+        <div>
+          Showing page <span class="font-bold text-white">{{ currentPage }}</span> of <span class="font-bold text-white">{{ totalPages }}</span> (Total: <span class="font-bold text-white">{{ totalItemsState }}</span>)
+        </div>
+        <div class="flex items-center space-x-2">
+          <button 
+            @click="changePage(currentPage - 1)" 
+            :disabled="currentPage <= 1"
+            class="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-800 text-slate-300 transition"
+          >
+            Previous
+          </button>
+          <button 
+            @click="changePage(currentPage + 1)" 
+            :disabled="currentPage >= totalPages"
+            class="px-3 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-800 text-slate-300 transition"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
 
