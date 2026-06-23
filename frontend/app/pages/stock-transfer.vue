@@ -64,6 +64,11 @@ watch(search, () => {
   fetchTransfers()
 })
 
+watch(perPage, () => {
+  currentPage.value = 1
+  fetchTransfers()
+})
+
 async function fetchTransfers() {
   loading.value = true
   errorMsg.value = ''
@@ -291,6 +296,23 @@ function canAction(transfer: any): boolean {
           placeholder="Search by item, source, or requester..."
           class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none transition"
         />
+      </div>
+      <div class="flex flex-wrap items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-500 font-semibold uppercase">Show</span>
+          <select
+            v-model="perPage"
+            class="bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-3 py-1.5 text-xs text-slate-300 focus:outline-none transition cursor-pointer"
+          >
+            <option :value="10">10</option>
+            <option :value="25">25</option>
+            <option :value="50">50</option>
+            <option :value="100">100</option>
+          </select>
+        </div>
+        <div class="text-xs text-slate-500 font-medium">
+          Showing {{ totalItemsState > 0 ? (currentPage - 1) * perPage + 1 : 0 }} - {{ Math.min(currentPage * perPage, totalItemsState) }} of {{ totalItemsState }} transfers
+        </div>
       </div>
       <div class="text-xs text-slate-500 font-semibold bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
         <span class="w-2.5 h-2.5 rounded-full" :class="isAdmin ? 'bg-blue-500' : 'bg-emerald-500'"></span>

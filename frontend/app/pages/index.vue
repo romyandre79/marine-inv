@@ -45,7 +45,7 @@ async function loadDashboardData() {
 }
 
 async function fetchInventory() {
-  const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+  const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
   const res = await $fetch<any>(`${config.public.apiUrl}/inventory${companyQuery}`, {
     headers: { Authorization: `Bearer ${authStore.token}` }
   })
@@ -55,7 +55,7 @@ async function fetchInventory() {
 }
 
 async function fetchTransfers() {
-  const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+  const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
   const res = await $fetch<any>(`${config.public.apiUrl}/stock-transfers${companyQuery}`, {
     headers: { Authorization: `Bearer ${authStore.token}` }
   })
@@ -65,7 +65,7 @@ async function fetchTransfers() {
 }
 
 async function fetchWarehouses() {
-  const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}` : ''
+  const companyQuery = tenantStore.activeTenantId ? `?company_id=${tenantStore.activeTenantId}&all=true` : '?all=true'
   const res = await $fetch<any>(`${config.public.apiUrl}/master-warehouses${companyQuery}`, {
     headers: { Authorization: `Bearer ${authStore.token}` }
   })
