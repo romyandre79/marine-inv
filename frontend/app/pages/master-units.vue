@@ -245,9 +245,10 @@ async function handleImportExcel(event: any) {
           @click="openAddModal"
           class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition duration-200 shadow-lg shadow-emerald-600/20 flex items-center gap-2"
         >
-        <Icon name="heroicons:plus" class="w-4 h-4" />
-        New Unit
-      </button>
+          <Icon name="heroicons:plus" class="w-4 h-4" />
+          New Unit
+        </button>
+      </div>
     </div>
 
     <!-- Toolbar: Search -->
