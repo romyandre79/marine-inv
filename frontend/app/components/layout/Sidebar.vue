@@ -9,11 +9,11 @@ const portalUrl = config.public.portalUrl || 'http://localhost:3003'
 const navItems = [
   { labelKey: 'nav.back_to_portal', label: 'Back to Portal', path: portalUrl, icon: 'heroicons:home', external: true },
   { labelKey: 'nav.dashboard', label: 'Dashboard', path: '/', icon: 'heroicons:chart-bar' },
-  { labelKey: 'nav.inventory_stock', label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2' },
-  { labelKey: 'nav.master_items', label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', roles: ['super_admin', 'company_admin', 'admin'] },
-  { labelKey: 'nav.master_warehouses', label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', roles: ['super_admin', 'company_admin', 'admin'] },
-  { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', roles: ['super_admin', 'company_admin', 'admin'] },
-  { labelKey: 'nav.stock_transfer', label: 'Stock Transfer', path: '/stock-transfer', icon: 'heroicons:arrows-right-left' },
+  { labelKey: 'nav.inventory_stock', label: 'Inventory Stock', path: '/inventory', icon: 'heroicons:squares-2x2', permission: 'inv:read' },
+  { labelKey: 'nav.master_items', label: 'Master Items', path: '/master-items', icon: 'heroicons:circle-stack', permission: 'master_items:read' },
+  { labelKey: 'nav.master_warehouses', label: 'Master Warehouses', path: '/master-warehouses', icon: 'heroicons:building-office-2', permission: 'master_warehouses:read' },
+  { labelKey: 'nav.master_units', label: 'Master Units', path: '/master-units', icon: 'heroicons:scale', permission: 'master_units:read' },
+  { labelKey: 'nav.stock_transfer', label: 'Stock Transfer', path: '/stock-transfer', icon: 'heroicons:arrows-right-left', permission: 'inv:read' },
   { labelKey: 'nav.chat', label: 'Chat & Asisten AI', path: '/chat', icon: 'heroicons:chat-bubble-left-right' }
 ]
 
@@ -22,8 +22,18 @@ const userPermissions = computed(() => auth.user?.permissions || [])
 
 const filteredNavItems = computed(() => {
   return navItems.filter(item => {
-    if (!item.roles) return true
-    return item.roles.includes(userRole.value)
+    if (userRole.value === 'super_admin') return true
+    
+    if (item.roles && !item.roles.includes(userRole.value)) return false
+    
+    if (item.permission) {
+      const hasRead = userPermissions.value.includes(item.permission)
+      const baseName = item.permission.split(':')[0]
+      const hasAll = userPermissions.value.includes(`${baseName}:all`)
+      if (!hasRead && !hasAll) return false
+    }
+    
+    return true
   })
 })
 </script>

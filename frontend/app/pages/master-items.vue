@@ -29,6 +29,24 @@ const isAuthorized = computed(() => {
   return role === 'super_admin' || role === 'company_admin' || role === 'admin'
 })
 
+const unitsList = ref<any[]>([])
+
+async function fetchUnitsList() {
+  try {
+    let companyQuery = tenantStore.activeTenantId ? `&company_id=${tenantStore.activeTenantId}` : ''
+    const res = await $fetch<any>(`${config.public.apiUrl}/master-units?all=true${companyQuery}`, {
+      headers: {
+        Authorization: `Bearer ${authStore.token}`
+      }
+    })
+    if (res.success) {
+      unitsList.value = res.data || []
+    }
+  } catch (error) {
+    console.error('Failed to fetch units list:', error)
+  }
+}
+
 // SSO Check: Redirect if not authenticated, redirect if not authorized
 onMounted(async () => {
   if (!authStore.isAuthenticated) {
@@ -39,6 +57,7 @@ onMounted(async () => {
   } else {
     await tenantStore.fetchCompanies()
     fetchMasterItems()
+    fetchUnitsList()
   }
 })
 
@@ -46,6 +65,7 @@ onMounted(async () => {
 watch(() => tenantStore.activeTenantId, () => {
   currentPage.value = 1
   fetchMasterItems()
+  fetchUnitsList()
 })
 
 watch(search, () => {
@@ -403,12 +423,13 @@ async function handleImportExcel(event: any) {
 
           <div>
             <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">Default Unit</label>
-            <input
+            <select
               v-model="form.unit"
-              type="text"
-              placeholder="e.g. pcs, Liters, drums"
-              class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none transition"
-            />
+              class="w-full bg-slate-950 border border-slate-800 focus:border-emerald-500 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none transition cursor-pointer"
+            >
+              <option value="" disabled>Select measurement unit</option>
+              <option v-for="u in unitsList" :key="u.id" :value="u.code">{{ u.name }} ({{ u.code }})</option>
+            </select>
           </div>
 
           <div>
