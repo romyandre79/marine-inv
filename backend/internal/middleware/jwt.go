@@ -55,7 +55,7 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		isSuperAdmin := claims.Role == "super_admin"
 		hasAppAccess := false
 		for _, appCode := range claims.Apps {
-			if appCode == "inventory" {
+			if appCode == "inv" {
 				hasAppAccess = true
 				break
 			}
@@ -74,3 +74,42 @@ func JWTAuth(secret string) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func RequirePermission(permission string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role == "super_admin" {
+			c.Next()
+			return
+		}
+		perms, exists := c.Get("permissions")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+			return
+		}
+		permList, ok := perms.([]string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+			return
+		}
+		for _, p := range permList {
+			if p == permission {
+				c.Next()
+				return
+			}
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+	}
+}
+
+func RequireSuperAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != "super_admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "message": "Access denied"})
+			return
+		}
+		c.Next()
+	}
+}
+
